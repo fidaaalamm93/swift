@@ -306,19 +306,7 @@ public final class Rupt {
 
         var body: [String : Any] = [
             "device": device,
-            "user": accountID,
-            "callbacks": ["limit_exceeded": self.limitExceeded != nil ? self.limitExceeded : false,
-                          "on_challenge": self.onChallenge != nil ? self.onChallenge : false ],
-            "client": getDeviceType(),
-            "version": "3.0.0"]
-
-        if let email = self.email {
-            body["email"] = email
-        }
-        
-        if let phone = self.phone {
-            body["phone"] = phone
-        }
+            "user": accountID]
 
         httpRequest(method: "POST", url: "\(baseURL)/v2/access/detach", body: body) { data in
             guard let data = data else { return }
