@@ -9,7 +9,11 @@ public final class Rupt {
     private var eventSource: EventSource?
     public var clientID: String?
     public var secret: String?
-    public var userID: String?
+    public var accountID: String?
+    public var email: String?
+    public var phone: String?
+    public var limitExceeded: Bool?
+    public var onChallenge: Bool?
     public var appearanceConfig: RuptAppearanceConfig?
     private let baseURL = "https://api.rupt.dev"
     private var window: UIWindow? = UIWindow(frame: UIScreen.main.bounds)
@@ -84,12 +88,31 @@ public final class Rupt {
      *  - parameter id: The user ID. Must be a string. If you have the user as anything other than a string, you must use a string representation of it. Send nil to remove the user ID (i.e. on logout).
      */
     public func setUserID(_ id: String?) {
-        self.userID = id
+        self.accountID = id
     }
 
     private func getDeviceIDForVendor() -> String {
         let vendorID = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
         return vendorID
+    }
+    
+    private func getDeviceType() -> String {
+        var deviceType = ""
+        switch UIDevice.current.userInterfaceIdiom {
+        case .unspecified:
+            deviceType = "unspecified"
+        case .phone, .pad:
+            deviceType = "ios"
+        case .tv:
+            deviceType = "apple-tv"
+        case .carPlay:
+            deviceType = "car-play"
+        case .mac:
+            deviceType = "mac"
+        @unknown default:
+            break
+        }
+        return deviceType
     }
 
     fileprivate func httpRequest(method: String, url urlString: String, body: [String: Any]? = nil, onCompletion: ((Data?) -> Void)? = nil) {
@@ -160,12 +183,27 @@ public final class Rupt {
      *  - parameter metadata: A key-value dictionary with any data that you want saved with all accesses
      */
     public func attach(metadata: [String: String]? = nil) {
-        guard let userID = userID else {
+        guard let accountID  = accountID else {
             print("[Rupt SDK]: userID must not be nil.")
             return
         }
         let deviceInfo = getDeviceInfo()
-        var body: [String : Any] = ["user": userID, "device_info": deviceInfo, "signals": ["iosVendorIdentifier": getDeviceIDForVendor()], "metadata": metadata ?? []]
+        var body: [String : Any] = ["user": accountID ,
+                                    "device_info": deviceInfo,
+                                    "signals": ["iosVendorIdentifier": getDeviceIDForVendor()],
+                                    "metadata": metadata ?? [],
+                                    "callbacks": ["limit_exceeded": self.limitExceeded != nil ? self.limitExceeded : false,
+                                                  "on_challenge": self.onChallenge != nil ? self.onChallenge : false ],
+                                    "client": getDeviceType(),
+                                    "version": "3.0.0"]
+        if let email = self.email {
+            body["email"] = email
+        }
+        
+        if let phone = self.phone {
+            body["phone"] = phone
+        }
+
         if let identity = self.identity {
             body["identity"] = identity
         }
@@ -260,15 +298,16 @@ public final class Rupt {
     }
 
     public func detach(deviceID device: String, completion: ((RuptAttachResponse?) -> Void)? = nil) {
-        guard let userID = userID else {
-            print("[Rupt SDK]: userID must not be nil.")
+        guard let accountID = accountID else {
+            print("[Rupt SDK]: accountID must not be nil.")
             completion?(nil)
             return
         }
-        let body = [
+
+        var body: [String : Any] = [
             "device": device,
-            "user": userID
-        ]
+            "user": accountID]
+
         httpRequest(method: "POST", url: "\(baseURL)/v2/access/detach", body: body) { data in
             guard let data = data else { return }
             let decoder = JSONDecoder()
@@ -291,7 +330,7 @@ public final class Rupt {
      * Returns the devices currently attached to the user.
      */
     public func getUserAttachedDevices() {
-        guard let userID = userID else {
+        guard let userID = accountID else {
             print("[Rupt SDK]: userID must not be nil.")
             return
         }
